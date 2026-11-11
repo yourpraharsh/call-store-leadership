@@ -1,0 +1,61 @@
+name: Add Figma link
+
+on:
+  push:
+    paths: [".github/workflows/figma-link.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply the edit
+        env:
+          PATCH: "H4sIADPN9GoC/3WT227aMBiAX8XKbloJ5wQUEjom2pX1Ztpu1l2UajKxk7gYO7KdAKt6u1fY++1J9jvQFhgTYNn/4fuP3N970jJp0wwOpkcFqdLY72u2fPY6yJvJy8DYjWBjdysZoe4yV3Qzdmo/5wUWXC6eKDeVIJuUS3gynAu2HhHBC4m5ZUuzj/cvgD6qCKVcFqk/gBeK/MgJ50pTptPI71drZJTgFDVEn2EXg53v1FgTymuTJklSrUdzki0KrWpJ062pqXVOMrDOlFB6J4QUz0e5khavGC9Km16E4ciytcWUZUoTy5VMpZIMYqyxKQlVqzREUQh5xD04cDSEUxdzcjYMO3HYGYQdv3f+/NqBtFQN00+7FPdjk8wVv2+aq6w2uOGGzwV7UrV15aXxUc07v9FOj1WeG2bTbrV+9h466N6bC5UtZh7i9P3My2shcKUZ1jCkdnTe+JLyBmWCGAMGK00qJyvjdnSYSArFGzeinAtmtswDuykw0T4TViAeXwaAPWI7JQIi2hLRHhG6yZgNALlRta40KYk2pV9wW9Zzn6sgI5C5sQritKbbQATiVC+xAsMyN6LxgQ6+5DWFl+ZCP0rNcpCU1lYmDYLVauVavyR+ppbBNsGgtnePj92ryOivj+IbjRbfPzafDMQROa54tqgr3HQ/SEUZhvZGCe4PY0BbogtmAf5jLkgbTDMBT6lUxSTTrnGmIvIgLZ4pMCSaE1xySpkEudU1a42bAjWcra7UGqQhClF3iPoDsF9xakuQRV1XUru17pU4r4rY0vXYhX4XTa6upzdg5Nbgc5SgeOj3SeL3kfvBErtPApc3EQixE/2cecERLZxcT4fdF1qIegO/PznwbG/d4W2UNMlxoP9Rp9NBfBHv5Rg2UVIeuwMeAAA+RYh7N9HNW17JUVrb8lrvu/D2X22rP8GdxP1kOn3juuadALf13gH+FNn5bNEBzNOdsALjL7ARyJYMTd3ytX+J7W6c3IQ/v37v/LyHh7+yL9d9lgUAAA=="
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, json, os, re
+          R = r"data:[a-z/0-9+.-]+;base64,[A-Za-z0-9+/=]+"
+          s = open("index.html", encoding="utf-8", newline="").read()
+          us = re.findall(R, s); i = [0]
+          def f(m):
+              i[0] += 1; return "@@U%d@@" % i[0]
+          s = re.sub(R, f, s); sp = []
+          for pre, suf, new in json.loads(gzip.decompress(base64.b64decode(os.environ["PATCH"]))):
+              assert s.count(pre) == 1, pre[:60]
+              a0 = s.find(pre) + len(pre); a1 = s.find(suf, a0); assert a1 >= a0; sp.append((a0, a1, new))
+          sp.sort(); out = []; cur = 0
+          for a0, a1, new in sp:
+              out.append(s[cur:a0]); out.append(new); cur = a1
+          out.append(s[cur:]); s = "".join(out)
+          s = re.sub(r"@@U(\d+)@@", lambda m: us[int(m.group(1)) - 1], s)
+          assert "Open the Figma file" in s
+          open("index.html", "w", encoding="utf-8", newline="").write(s); print("updated")
+
+          PY
+      - name: Save the page
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if ! git diff --cached --quiet; then git commit -m "Add Figma link" && git push; fi
+      - run: mkdir -p _site && cp index.html _site/ && touch _site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
