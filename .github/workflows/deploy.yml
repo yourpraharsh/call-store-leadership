@@ -1,0 +1,50 @@
+name: Deploy page
+
+on:
+  push:
+    paths: [".github/workflows/deploy.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble the page
+        run: |
+          curl -fsSL -o source.html "https://raw.githubusercontent.com/yourpraharsh/call-store-sheet/main/index.html"
+          python3 - <<'PY'
+          import base64, glob, gzip, hashlib, re
+          skel = gzip.decompress(base64.b64decode("".join(open(p).read().strip() for p in sorted(glob.glob(".github/upload/p*.txt"))))).decode()
+          src = open("source.html", encoding="utf-8").read()
+          assets = {hashlib.sha256(u.encode()).hexdigest()[:16]: u for u in re.findall(r"data:[a-z/0-9+.-]+;base64,[A-Za-z0-9+/=]+", src)}
+          page = re.sub(r"@@A:([0-9a-f]{16})@@", lambda m: assets[m.group(1)], skel)
+          assert hashlib.sha256(page.encode()).hexdigest() == "94e7e4dc338dffd57eb24cc49c74c9173a3d8196cc16b6dd0c745142955c804c", "page does not match"
+          open("index.html", "w", encoding="utf-8", newline="").write(page)
+          PY
+          rm source.html
+      - name: Save the page
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if ! git diff --cached --quiet; then git commit -m "Add the leadership review page" && git push; fi
+      - run: mkdir -p _site && cp index.html _site/ && touch _site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
